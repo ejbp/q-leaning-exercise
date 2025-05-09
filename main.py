@@ -13,10 +13,10 @@ import re
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Q-learning soccer game")
-    parser.add_argument("--mode", choices=["train", "continue", "play"], default="train", help="Mode: train, continue, or play (human mode)")
+    parser.add_argument("--mode", choices=["train", "continue", "play"], default="train", help="Mode: train, continue, or play (human or agent vs agent)")
     parser.add_argument("--render", action="store_true", help="Enable visual rendering")
     parser.add_argument("--num-players", type=int, default=2, help="Number of players per team")
-    parser.add_argument("--human-mode", action="store_true", help="Enable human control for one player")
+    parser.add_argument("--human-mode", action="store_true", help="Enable human control for Team A in play mode")
     return parser.parse_args()
 
 def find_latest_checkpoint(team):
@@ -45,13 +45,12 @@ async def main():
     env = SoccerEnvironment(render=args.render, num_players=args.num_players, human_mode=args.human_mode)
     state_dim = env.state_space
     action_dim = env.action_space
-    team_a_agent = DQNAgent(state_dim, action_dim, lr=0.0005, gamma=0.99, epsilon=1.0, epsilon_decay=0.995, device=device)
-    team_b_agent = DQNAgent(state_dim, action_dim, lr=0.0005, gamma=0.99, epsilon=1.0, epsilon_decay=0.995, device=device)
+    team_a_agent = DQNAgent(state_dim, action_dim, lr=0.0005, gamma=0.99, epsilon=0.0, epsilon_decay=0.995, device=device)  # Epsilon=0 for play mode
+    team_b_agent = DQNAgent(state_dim, action_dim, lr=0.0005, gamma=0.99, epsilon=0.0, epsilon_decay=0.995, device=device)  # Epsilon=0 for play mode
 
-    # Load models if continuing
-    if args.mode == "continue":
+    # Load latest models for play mode or continue mode
+    if args.mode in ["continue", "play"]:
         try:
-            # Try to load the latest checkpoint
             team_a_checkpoint = find_latest_checkpoint("team_a")
             team_b_checkpoint = find_latest_checkpoint("team_b")
             if team_a_checkpoint and team_b_checkpoint:
@@ -59,16 +58,20 @@ async def main():
                 team_b_agent.load(team_b_checkpoint)
                 logging.info(f"Loaded latest checkpoints: {team_a_checkpoint}, {team_b_checkpoint}")
             else:
+                raise FileNotFoundError("No checkpoint files found")
+        except FileNotFoundError:
+            try:
                 # Fall back to default models
                 team_a_agent.load("model/dqn_team_a.pth")
                 team_b_agent.load("model/dqn_team_b.pth")
                 logging.info("Loaded default models: model/dqn_team_a.pth, model/dqn_team_b.pth")
-        except FileNotFoundError:
-            logging.warning("No saved models or checkpoints found, starting fresh")
+            except FileNotFoundError:
+                logging.error("No saved models or checkpoints found. Exiting.")
+                return
 
     # Training or play loop
     num_episodes = 2000 if args.mode in ["train", "continue"] else 1
-    save_interval = 10
+    save_interval = 100
     for episode in range(num_episodes):
         start_time = time.time()
         state = env.reset()
@@ -76,14 +79,24 @@ async def main():
         total_reward_a = 0
         total_reward_b = 0
         while not done:
-            if args.human_mode and args.mode == "play":
+            if args.mode == "play" and args.human_mode:
+                # Human controls Team A, agent controls Team B
                 action_a = env.get_human_action()
+                if action_a is None:  # Default to agent's action if no human input
+                    action_a = team_a_agent.act(state)
                 action_b = team_b_agent.act(state)
-            else:
+            elif args.mode == "play":
+                # Agent vs Agent: Team A and Team B use their trained models
                 action_a = team_a_agent.act(state)
                 action_b = team_b_agent.act(state)
+            else:
+                # Training or continue mode: Both teams use exploration
+                action_a = team_a_agent.act(state)
+                action_b = team_b_agent.act(state)
+
             next_state, reward_a, reward_b, done = env.step(action_a, action_b)
             if args.mode in ["train", "continue"]:
+                # Store experiences and train only in train/continue modes
                 team_a_agent.remember(state, action_a, reward_a, next_state, done)
                 team_b_agent.remember(state, action_b, reward_b, next_state, done)
                 team_a_agent.replay()
