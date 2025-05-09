@@ -5,6 +5,7 @@ import logging
 from environment import SoccerEnvironment
 from agent import DQNAgent
 from utils import setup_logging
+import platform
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Q-learning soccer game")
