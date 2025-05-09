@@ -1,5 +1,6 @@
 import pygame
 import numpy as np
+import random
 
 class SoccerEnvironment:
     def __init__(self, render=False):
@@ -12,26 +13,31 @@ class SoccerEnvironment:
         self.clock = pygame.time.Clock() if render else None
 
         # Game state
-        self.player_pos = [self.field_width // 4, self.field_height // 2]  # Start near left side
-        self.ball_pos = [self.field_width // 2, self.field_height // 2]    # Start at center
+        self.player_pos = [self.field_width // 4, self.field_height // 2]  # Agent-controlled player
+        self.opponent_pos = [3 * self.field_width // 4, self.field_height // 2]  # AI opponent
+        self.ball_pos = [self.field_width // 2, self.field_height // 2]
+        self.ball_velocity = [0, 0]  # Ball physics (x, y velocity)
         self.left_goal = (0, (self.field_height - self.goal_height) // 2)
         self.right_goal = (self.field_width - self.goal_width, (self.field_height - self.goal_height) // 2)
 
         # Action and state spaces
-        self.action_space = 4  # Up, down, left, right
-        self.state_space = 6   # Player (x, y), Ball (x, y), Goal (x, y) (simplified to one goal for now)
+        self.action_space = 5  # Up, down, left, right, kick
+        self.state_space = 10  # Player (x, y), Opponent (x, y), Ball (x, y, vx, vy), Goal (x, y)
         self.reset()
 
     def reset(self):
         self.player_pos = [self.field_width // 4, self.field_height // 2]
+        self.opponent_pos = [3 * self.field_width // 4, self.field_height // 2]
         self.ball_pos = [self.field_width // 2, self.field_height // 2]
+        self.ball_velocity = [0, 0]
         return self.get_state()
 
     def get_state(self):
-        # Simplified state: player and ball positions, targeting right goal
         return np.array([
             self.player_pos[0], self.player_pos[1],
+            self.opponent_pos[0], self.opponent_pos[1],
             self.ball_pos[0], self.ball_pos[1],
+            self.ball_velocity[0], self.ball_velocity[1],
             self.right_goal[0] + self.goal_width // 2, self.right_goal[1] + self.goal_height // 2
         ])
 
@@ -46,32 +52,83 @@ class SoccerEnvironment:
             self.player_pos[0] = max(self.player_size, self.player_pos[0] - speed)
         elif action == 3:  # Right
             self.player_pos[0] = min(self.field_width - self.player_size, self.player_pos[0] + speed)
+        elif action == 4:  # Kick
+            player_rect = pygame.Rect(self.player_pos[0] - self.player_size, self.player_pos[1] - self.player_size, self.player_size * 2, self.player_size * 2)
+            ball_rect = pygame.Rect(self.ball_pos[0] - self.ball_size, self.ball_pos[1] - self.ball_size, self.ball_size * 2, self.ball_size * 2)
+            if player_rect.colliderect(ball_rect):
+                # Kick ball towards right goal
+                dx = self.right_goal[0] + self.goal_width // 2 - self.ball_pos[0]
+                dy = self.right_goal[1] + self.goal_height // 2 - self.ball_pos[1]
+                dist = (dx**2 + dy**2)**0.5
+                if dist > 0:
+                    kick_speed = 15
+                    self.ball_velocity = [kick_speed * dx / dist, kick_speed * dy / dist]
 
-        # Check if player is near ball to "kick" it
-        reward = -0.1  # Small negative reward per step
-        done = False
+        # Move opponent (simple AI: chase ball)
+        opp_speed = 4
+        dx = self.ball_pos[0] - self.opponent_pos[0]
+        dy = self.ball_pos[1] - self.opponent_pos[1]
+        dist = (dx**2 + dy**2)**0.5
+        if dist > 0:
+            self.opponent_pos[0] += opp_speed * dx / dist
+            self.opponent_pos[1] += opp_speed * dy / dist
+            self.opponent_pos[0] = max(self.player_size, min(self.field_width - self.player_size, self.opponent_pos[0]))
+            self.opponent_pos[1] = max(self.player_size, min(self.field_height - self.player_size, self.opponent_pos[1]))
+
+        # Update ball physics
+        self.ball_pos[0] += self.ball_velocity[0]
+        self.ball_pos[1] += self.ball_velocity[1]
+        # Apply friction
+        friction = 0.98
+        self.ball_velocity[0] *= friction
+        self.ball_velocity[1] *= friction
+        # Keep ball in bounds
+        self.ball_pos[0] = max(self.ball_size, min(self.field_width - self.ball_size, self.ball_pos[0]))
+        self.ball_pos[1] = max(self.ball_size, min(self.field_height - self.ball_size, self.ball_pos[1]))
+
+        # Check collisions
         player_rect = pygame.Rect(self.player_pos[0] - self.player_size, self.player_pos[1] - self.player_size, self.player_size * 2, self.player_size * 2)
+        opponent_rect = pygame.Rect(self.opponent_pos[0] - self.player_size, self.opponent_pos[1] - self.player_size, self.player_size * 2, self.player_size * 2)
         ball_rect = pygame.Rect(self.ball_pos[0] - self.ball_size, self.ball_pos[1] - self.ball_size, self.ball_size * 2, self.ball_size * 2)
-        if player_rect.colliderect(ball_rect):
-            # Move ball towards right goal
-            dx = self.right_goal[0] + self.goal_width // 2 - self.ball_pos[0]
-            dy = self.right_goal[1] + self.goal_height // 2 - self.ball_pos[1]
+
+        # Player-opponent collision
+        if player_rect.colliderect(opponent_rect):
+            # Push players apart
+            dx = self.player_pos[0] - self.opponent_pos[0]
+            dy = self.player_pos[1] - self.opponent_pos[1]
             dist = (dx**2 + dy**2)**0.5
             if dist > 0:
-                self.ball_pos[0] += (dx / dist) * 10
-                self.ball_pos[1] += (dy / dist) * 10
+                push = 2
+                self.player_pos[0] += push * dx / dist
+                self.player_pos[1] += push * dy / dist
+                self.opponent_pos[0] -= push * dx / dist
+                self.opponent_pos[1] -= push * dy / dist
 
-        # Check if ball is in goal
-        ball_rect = pygame.Rect(self.ball_pos[0] - self.ball_size, self.ball_pos[1] - self.ball_size, self.ball_size * 2, self.ball_size * 2)
+        # Opponent-ball collision
+        if opponent_rect.colliderect(ball_rect):
+            # Opponent kicks ball towards left goal
+            dx = self.left_goal[0] + self.goal_width // 2 - self.ball_pos[0]
+            dy = self.left_goal[1] + self.goal_height // 2 - self.ball_pos[1]
+            dist = (dx**2 + dy**2)**0.5
+            if dist > 0:
+                kick_speed = 10
+                self.ball_velocity = [kick_speed * dx / dist, kick_speed * dy / dist]
+
+        # Rewards and termination
+        reward = -0.1  # Small negative reward per step
+        done = False
         right_goal_rect = pygame.Rect(self.right_goal[0], self.right_goal[1], self.goal_width, self.goal_height)
-        if ball_rect.colliderect(right_goal_rect):
-            reward = 100
-            done = True
+        left_goal_rect = pygame.Rect(self.left_goal[0], self.left_goal[1], self.goal_width, self.goal_height)
 
-        # Check if ball is out of bounds
-        if (self.ball_pos[0] < 0 or self.ball_pos[0] > self.field_width or
-                self.ball_pos[1] < 0 or self.ball_pos[1] > self.field_height):
-            reward = -100
+        if ball_rect.colliderect(right_goal_rect):
+            reward = 100  # Agent scores
+            done = True
+        elif ball_rect.colliderect(left_goal_rect):
+            reward = -100  # Opponent scores
+            done = True
+        elif (self.ball_pos[0] <= self.ball_size or self.ball_pos[0] >= self.field_width - self.ball_size or
+              self.ball_pos[1] <= self.ball_size or self.ball_pos[1] >= self.field_height - self.ball_size):
+            reward = -50  # Ball out of bounds
             done = True
 
         next_state = self.get_state()
@@ -109,12 +166,13 @@ class SoccerEnvironment:
         pygame.draw.circle(screen, (255, 0, 0), (self.right_goal[0] + self.goal_width // 2, self.right_goal[1] + self.goal_height // 2), 5)
 
     def draw_players(self, screen):
-        # Draw player as a blue circle
+        # Draw agent player (blue) and opponent (red)
         pygame.draw.circle(screen, (0, 0, 255), (int(self.player_pos[0]), int(self.player_pos[1])), self.player_size)
+        pygame.draw.circle(screen, (255, 0, 0), (int(self.opponent_pos[0]), int(self.opponent_pos[1])), self.player_size)
 
     def draw_ball(self, screen):
-        # Draw ball as a red circle
-        pygame.draw.circle(screen, (255, 0, 0), (int(self.ball_pos[0]), int(self.ball_pos[1])), self.ball_size)
+        # Draw ball (white)
+        pygame.draw.circle(screen, (255, 255, 255), (int(self.ball_pos[0]), int(self.ball_pos[1])), self.ball_size)
 
     def render(self):
         if not self.render_enabled:

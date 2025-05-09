@@ -20,8 +20,8 @@ async def main():
 
     # Initialize environment and agent
     env = SoccerEnvironment(render=args.render)
-    state_dim = env.state_space  # Simplified state space (e.g., player, ball, goal positions)
-    action_dim = env.action_space  # Simplified action space (e.g., move up/down/left/right)
+    state_dim = env.state_space  # Player, opponent, ball, goal positions
+    action_dim = env.action_space  # Move up/down/left/right/kick
     agent = DQNAgent(state_dim, action_dim, lr=0.001, gamma=0.99, epsilon=1.0, epsilon_decay=0.995, device="cpu")
 
     # Load model if continuing
@@ -33,7 +33,7 @@ async def main():
             logging.warning("No saved model found, starting fresh")
 
     # Training loop
-    num_episodes = 1000
+    num_episodes = 2000  # Increased for more complex environment
     for episode in range(num_episodes):
         state = env.reset()
         done = False
