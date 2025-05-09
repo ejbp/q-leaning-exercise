@@ -21,6 +21,11 @@ def setup_device():
     if np_version.startswith("2"):
         warnings.warn("NumPy 2.x detected. This may cause issues with PyTorch. Consider downgrading to 'numpy<2'.")
 
+    # Check PyTorch version
+    torch_version = torch.__version__
+    if torch_version.startswith("2"):
+        warnings.warn("PyTorch 2.x detected. Ensure compatibility with your setup.")
+
     # Check for CUDA availability
     logger = setup_logging()
     if not cuda.is_available():
