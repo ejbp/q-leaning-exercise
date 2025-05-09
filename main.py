@@ -20,8 +20,8 @@ def parse_args():
     return parser.parse_args()
 
 def find_latest_checkpoint(team):
-    # Find all checkpoint files for the team (e.g., dqn_team_a_ep100.pth)
-    pattern = f"dqn_{team}_ep*.pth"
+    # Find all checkpoint files in model/ directory
+    pattern = f"model/dqn_{team}_ep*.pth"
     checkpoint_files = glob.glob(pattern)
     if not checkpoint_files:
         return None
@@ -37,6 +37,9 @@ async def main():
     setup_logging()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logging.info(f"Starting in {args.mode} mode with render={args.render}, num_players={args.num_players}, human_mode={args.human_mode}, device={device}")
+
+    # Create model/ directory if it doesn't exist
+    os.makedirs("model", exist_ok=True)
 
     # Initialize environment and agents
     env = SoccerEnvironment(render=args.render, num_players=args.num_players, human_mode=args.human_mode)
@@ -57,15 +60,15 @@ async def main():
                 logging.info(f"Loaded latest checkpoints: {team_a_checkpoint}, {team_b_checkpoint}")
             else:
                 # Fall back to default models
-                team_a_agent.load("dqn_team_a.pth")
-                team_b_agent.load("dqn_team_b.pth")
-                logging.info("Loaded default models: dqn_team_a.pth, dqn_team_b.pth")
+                team_a_agent.load("model/dqn_team_a.pth")
+                team_b_agent.load("model/dqn_team_b.pth")
+                logging.info("Loaded default models: model/dqn_team_a.pth, model/dqn_team_b.pth")
         except FileNotFoundError:
             logging.warning("No saved models or checkpoints found, starting fresh")
 
     # Training or play loop
     num_episodes = 2000 if args.mode in ["train", "continue"] else 1
-    save_interval = 10
+    save_interval = 100
     for episode in range(num_episodes):
         start_time = time.time()
         state = env.reset()
@@ -98,14 +101,14 @@ async def main():
             team_a_agent.decay_epsilon()
             team_b_agent.decay_epsilon()
             if (episode + 1) % save_interval == 0:
-                team_a_agent.save(f"dqn_team_a_ep{episode + 1}.pth")
-                team_b_agent.save(f"dqn_team_b_ep{episode + 1}.pth")
+                team_a_agent.save(f"model/dqn_team_a_ep{episode + 1}.pth")
+                team_b_agent.save(f"model/dqn_team_b_ep{episode + 1}.pth")
                 logging.info(f"Saved models at episode {episode + 1}")
 
     # Save final models
     if args.mode in ["train", "continue"]:
-        team_a_agent.save("dqn_team_a.pth")
-        team_b_agent.save("dqn_team_b.pth")
+        team_a_agent.save("model/dqn_team_a.pth")
+        team_b_agent.save("model/dqn_team_b.pth")
         logging.info("Saved final models")
     env.close()
 
