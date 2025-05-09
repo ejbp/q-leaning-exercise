@@ -160,7 +160,7 @@ class SoccerEnvironment:
                 opponent_rect = pygame.Rect(opp_pos[0] - self.player_size, opp_pos[1] - self.player_size, self.player_size * 2, self.player_size * 2)
                 if player_rect.colliderect(opponent_rect):
                     dx = pos[0] - opp_pos[0]
-                    dy = pos[1] - opp_pos[1]
+                    dy = round(pos[1] - opp_pos[1], 2)
                     dist = (dx**2 + dy**2)**0.5
                     if dist > 0:
                         push = 2
@@ -172,12 +172,29 @@ class SoccerEnvironment:
         # Reward shaping
         reward_a = -0.1
         reward_b = -0.1
+
+        # Ball proximity reward (increased for closest player)
+        max_field_dist = (self.field_width**2 + self.field_height**2)**0.5
         min_dist_to_ball_a = min((pos[0] - self.ball_pos[0])**2 + (pos[1] - self.ball_pos[1])**2 for pos in self.team_a_positions)**0.5
         min_dist_to_ball_b = min((pos[0] - self.ball_pos[0])**2 + (pos[1] - self.ball_pos[1])**2 for pos in self.team_b_positions)**0.5
+        reward_a += 1.0 * (1 - min_dist_to_ball_a / max_field_dist)  # Increased weight
+        reward_b += 1.0 * (1 - min_dist_to_ball_b / max_field_dist)  # Increased weight
+
+        # Defensive positioning reward (when ball is in own half)
+        ball_in_a_half = self.ball_pos[0] < self.field_width / 2
+        ball_in_b_half = self.ball_pos[0] > self.field_width / 2
+        for pos in self.team_a_positions:
+            dist_to_own_goal = ((pos[0] - self.left_goal[0])**2 + (pos[1] - self.left_goal[1])**2)**0.5
+            if ball_in_a_half and dist_to_own_goal < 150:  # Near own goal when ball is in half
+                reward_a += 2.0
+        for pos in self.team_b_positions:
+            dist_to_own_goal = ((pos[0] - self.right_goal[0])**2 + (pos[1] - self.right_goal[1])**2)**0.5
+            if ball_in_b_half and dist_to_own_goal < 150:  # Near own goal when ball is in half
+                reward_b += 2.0
+
+        # Ball progress reward
         ball_progress_a = 1 - self.ball_pos[0] / self.field_width
         ball_progress_b = self.ball_pos[0] / self.field_width
-        reward_a += 0.5 * (1 - min_dist_to_ball_a / (self.field_width**2 + self.field_height**2)**0.5)
-        reward_b += 0.5 * (1 - min_dist_to_ball_b / (self.field_width**2 + self.field_height**2)**0.5)
         reward_a += 10 * ball_progress_a
         reward_b += 10 * ball_progress_b
 
@@ -195,13 +212,23 @@ class SoccerEnvironment:
                             if teammate_dist_to_goal < dist_to_goal:
                                 reward_a += 2
 
+        # Teamwork spacing reward (Team A)
+        for i, pos in enumerate(self.team_a_positions):
+            for j, teammate_pos in enumerate(self.team_a_positions):
+                if i < j:
+                    dist = ((pos[0] - teammate_pos[0])**2 + (pos[1] - teammate_pos[1])**2)**0.5
+                    if 50 < dist < 200:  # Optimal spacing
+                        reward_a += 0.5
+                    elif dist < 50:  # Penalize overcrowding
+                        reward_a -= 0.5
+
         # Running reward (Team A)
         for pos in self.team_a_positions:
             min_dist_to_opponent = min((pos[0] - opp_pos[0])**2 + (pos[1] - opp_pos[1])**2 for opp_pos in self.team_b_positions)**0.5
             if min_dist_to_opponent > 100:
                 reward_a += 1
 
-        # Passing and running for Team B
+        # Passing and teamwork for Team B
         for i, pos in enumerate(self.team_b_positions):
             player_rect = pygame.Rect(pos[0] - self.player_size, pos[1] - self.player_size, self.player_size * 2, self.player_size * 2)
             if player_rect.colliderect(ball_rect):
@@ -214,6 +241,15 @@ class SoccerEnvironment:
                             teammate_dist_to_goal = ((teammate_pos[0] - self.left_goal[0])**2 + (teammate_pos[1] - self.left_goal[1])**2)**0.5
                             if teammate_dist_to_goal < dist_to_goal:
                                 reward_b += 2
+
+        for i, pos in enumerate(self.team_b_positions):
+            for j, teammate_pos in enumerate(self.team_b_positions):
+                if i < j:
+                    dist = ((pos[0] - teammate_pos[0])**2 + (pos[1] - teammate_pos[1])**2)**0.5
+                    if 50 < dist < 200:  # Optimal spacing
+                        reward_b += 0.5
+                    elif dist < 50:  # Penalize overcrowding
+                        reward_b -= 0.5
 
         for pos in self.team_b_positions:
             min_dist_to_opponent = min((pos[0] - opp_pos[0])**2 + (pos[1] - opp_pos[1])**2 for opp_pos in self.team_a_positions)**0.5
