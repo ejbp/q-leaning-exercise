@@ -5,6 +5,7 @@ def setup_logging():
         level=logging.INFO,
         format="%(asctime)s - %(levelname)s - %(message)s",
         handlers=[
-            logging.StreamHandler()
+            logging.StreamHandler(),
+            logging.FileHandler("training.log")
         ]
     )
