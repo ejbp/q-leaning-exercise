@@ -1,9 +1,13 @@
 import pygame
 import numpy as np
 import random
+import logging
+import os
 
 class SoccerEnvironment:
     def __init__(self, render=False, num_players=2, human_mode=False):
+        # Set SDL_VIDEODRIVER for macOS compatibility (uncomment if needed)
+        # os.environ['SDL_VIDEODRIVER'] = 'quartz'  # or 'x11' if using XQuartz
         self.field_width, self.field_height = 800, 600
         self.goal_width, self.goal_height = 50, 200
         self.player_size = 20
@@ -17,9 +21,19 @@ class SoccerEnvironment:
         self.score_b = 0
         self.selected_player = 0
         self.human_action = None
-        self.screen = pygame.display.set_mode((self.field_width, self.field_height)) if render else None
-        self.clock = pygame.time.Clock() if render else None
-        self.font = pygame.font.SysFont("arial", 20) if render else None
+        
+        if render:
+            pygame.init()
+            pygame.display.init()  # Explicitly initialize display
+            self.screen = pygame.display.set_mode((self.field_width, self.field_height))
+            pygame.display.set_caption("Soccer Q-Learning")
+            self.clock = pygame.time.Clock()
+            self.font = pygame.font.SysFont("arial", 20)
+            logging.info("Pygame initialized for rendering")
+        else:
+            self.screen = None
+            self.clock = None
+            self.font = None
 
         self.team_a_positions = []
         self.team_b_positions = []
@@ -38,6 +52,8 @@ class SoccerEnvironment:
         self.ball_pos = [self.field_width // 2, self.field_height // 2]
         self.ball_velocity = [0, 0]
         self.current_step = 0
+        self.score_a = 0
+        self.score_b = 0
         self.selected_player = 0
         self.human_action = None
         return self.get_state()
@@ -170,22 +186,22 @@ class SoccerEnvironment:
             player_rect = pygame.Rect(pos[0] - self.player_size, pos[1] - self.player_size, self.player_size * 2, self.player_size * 2)
             if player_rect.colliderect(ball_rect):
                 dist_to_goal = ((pos[0] - self.right_goal[0])**2 + (pos[1] - self.right_goal[1])**2)**0.5
-                if dist_to_goal < 100:  # Near goal, prioritize shooting
+                if dist_to_goal < 100:
                     reward_a += 5
                 else:
                     for j, teammate_pos in enumerate(self.team_a_positions):
                         if i != j:
                             teammate_dist_to_goal = ((teammate_pos[0] - self.right_goal[0])**2 + (teammate_pos[1] - self.right_goal[1])**2)**0.5
                             if teammate_dist_to_goal < dist_to_goal:
-                                reward_a += 2  # Reward passing to better-positioned teammate
+                                reward_a += 2
 
         # Running reward (Team A)
         for pos in self.team_a_positions:
             min_dist_to_opponent = min((pos[0] - opp_pos[0])**2 + (pos[1] - opp_pos[1])**2 for opp_pos in self.team_b_positions)**0.5
-            if min_dist_to_opponent > 100:  # Open space
+            if min_dist_to_opponent > 100:
                 reward_a += 1
 
-        # Passing and running for Team B (mirrored)
+        # Passing and running for Team B
         for i, pos in enumerate(self.team_b_positions):
             player_rect = pygame.Rect(pos[0] - self.player_size, pos[1] - self.player_size, self.player_size * 2, self.player_size * 2)
             if player_rect.colliderect(ball_rect):
@@ -274,6 +290,11 @@ class SoccerEnvironment:
     def render(self):
         if not self.render_enabled:
             return
+        # Handle events to prevent window freezing
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.close()
+                raise SystemExit
         self.draw_field(self.screen)
         self.draw_field_lines(self.screen)
         self.draw_players(self.screen)
@@ -281,8 +302,11 @@ class SoccerEnvironment:
         self.draw_goals(self.screen)
         self.draw_hud(self.screen)
         pygame.display.flip()
+        pygame.display.update()  # Ensure display updates
         self.clock.tick(60)
+        logging.debug("Rendered frame")
 
     def close(self):
         if self.render_enabled:
             pygame.quit()
+            logging.info("Pygame quit")
