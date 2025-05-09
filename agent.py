@@ -5,6 +5,7 @@ import numpy as np
 import random
 from collections import deque
 import heapq
+import logging
 
 torch._dynamo.config.suppress_errors = True
 
@@ -121,7 +122,9 @@ class DQNAgent:
 
     def save(self, path):
         torch.save(self.model.state_dict(), path)
+        logging.info(f"Saved model to {path}")
 
     def load(self, path):
-        self.model.load_state_dict(torch.load(path))
+        logging.info(f"Loading model from {path} to device {self.device}")
+        self.model.load_state_dict(torch.load(path, map_location=self.device))
         self.target_model.load_state_dict(self.model.state_dict())

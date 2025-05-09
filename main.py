@@ -7,6 +7,9 @@ from agent import DQNAgent
 from utils import setup_logging
 import platform
 import time
+import os
+import glob
+import re
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Q-learning soccer game")
@@ -15,6 +18,19 @@ def parse_args():
     parser.add_argument("--num-players", type=int, default=2, help="Number of players per team")
     parser.add_argument("--human-mode", action="store_true", help="Enable human control for one player")
     return parser.parse_args()
+
+def find_latest_checkpoint(team):
+    # Find all checkpoint files for the team (e.g., dqn_team_a_ep100.pth)
+    pattern = f"dqn_{team}_ep*.pth"
+    checkpoint_files = glob.glob(pattern)
+    if not checkpoint_files:
+        return None
+    # Extract episode numbers and find the highest
+    def get_episode_number(filename):
+        match = re.search(r'ep(\d+)\.pth$', filename)
+        return int(match.group(1)) if match else -1
+    latest_file = max(checkpoint_files, key=get_episode_number)
+    return latest_file
 
 async def main():
     args = parse_args()
@@ -32,15 +48,24 @@ async def main():
     # Load models if continuing
     if args.mode == "continue":
         try:
-            team_a_agent.load("dqn_team_a.pth")
-            team_b_agent.load("dqn_team_b.pth")
-            logging.info("Loaded saved models for Team A and Team B")
+            # Try to load the latest checkpoint
+            team_a_checkpoint = find_latest_checkpoint("team_a")
+            team_b_checkpoint = find_latest_checkpoint("team_b")
+            if team_a_checkpoint and team_b_checkpoint:
+                team_a_agent.load(team_a_checkpoint)
+                team_b_agent.load(team_b_checkpoint)
+                logging.info(f"Loaded latest checkpoints: {team_a_checkpoint}, {team_b_checkpoint}")
+            else:
+                # Fall back to default models
+                team_a_agent.load("dqn_team_a.pth")
+                team_b_agent.load("dqn_team_b.pth")
+                logging.info("Loaded default models: dqn_team_a.pth, dqn_team_b.pth")
         except FileNotFoundError:
-            logging.warning("No saved models found, starting fresh")
+            logging.warning("No saved models or checkpoints found, starting fresh")
 
     # Training or play loop
     num_episodes = 2000 if args.mode in ["train", "continue"] else 1
-    save_interval = 10
+    save_interval = 100
     for episode in range(num_episodes):
         start_time = time.time()
         state = env.reset()
