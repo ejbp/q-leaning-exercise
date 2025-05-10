@@ -170,8 +170,20 @@ class SoccerEnvironment:
                         opp_pos[1] -= push * dy / dist
 
         # Reward shaping
-        reward_a = -0.1
-        reward_b = -0.1
+        # Reward who is winning
+
+        score_ratio_a = self.score_a / (self.score_a + self.score_b) if self.score_a != 0 else 0
+        score_ratio_b = self.score_b / (self.score_a + self.score_b) if self.score_b != 0 else 0
+
+        if self.score_a > self.score_b:
+            reward_a = 1.0 * score_ratio_a
+            reward_b = -1.0 * score_ratio_b
+        elif self.score_b > self.score_a:
+            reward_a = -1.0 * score_ratio_a
+            reward_b = 1.0 * score_ratio_b
+        else:
+            reward_a = -0.1
+            reward_b = -0.1
 
         # Ball proximity reward
         max_field_dist = (self.field_width**2 + self.field_height**2)**0.5
@@ -195,8 +207,8 @@ class SoccerEnvironment:
         # Ball progress reward (reduced weight)
         ball_progress_a = 1 - self.ball_pos[0] / self.field_width
         ball_progress_b = self.ball_pos[0] / self.field_width
-        reward_a += 5.0 * ball_progress_a  # Reduced from 10.0
-        reward_b += 5.0 * ball_progress_b  # Reduced from 10.0
+        reward_a += 5.0 * ball_progress_a
+        reward_b += 5.0 * ball_progress_b
 
         # Proximity-to-goal reward for ball
         dist_ball_to_right_goal = ((self.ball_pos[0] - (self.right_goal[0] + self.goal_width // 2))**2 + 
@@ -273,18 +285,19 @@ class SoccerEnvironment:
 
         if ball_rect.colliderect(right_goal_rect):
             self.score_a += 1
-            reward_a = 500  # Increased from 100
-            reward_b = -500  # Increased from -100
+            reward_a = 5000  # Increased from 100
+            reward_b = -5000  # Increased from -100
             done = True
         elif ball_rect.colliderect(left_goal_rect):
             self.score_b += 1
-            reward_a = -500  # Increased from -100
-            reward_b = 500  # Increased from 100
+            reward_a = -5000  # Increased from -100
+            reward_b = 5000  # Increased from 100
             done = True
+        # Out of bounds
         elif (self.ball_pos[0] <= self.ball_size or self.ball_pos[0] >= self.field_width - self.ball_size or
             self.ball_pos[1] <= self.ball_size or self.ball_pos[1] >= self.field_height - self.ball_size):
-            reward_a = -50
-            reward_b = -50
+            reward_a = -50000
+            reward_b = -50000
             done = True
         elif self.current_step >= self.max_steps:
             done = True

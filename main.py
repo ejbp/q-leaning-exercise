@@ -46,8 +46,8 @@ async def main():
     state_dim = env.state_space
     action_dim = env.action_space
     epsilon = 1.0 if args.mode in ["train", "continue"] else 0.0
-    team_a_agent = DQNAgent(state_dim, action_dim, lr=0.0005, gamma=0.99, epsilon=epsilon, epsilon_decay=0.995, device=device) 
-    team_b_agent = DQNAgent(state_dim, action_dim, lr=0.0005, gamma=0.99, epsilon=epsilon, epsilon_decay=0.995, device=device) 
+    team_a_agent = DQNAgent(state_dim, action_dim, lr=0.0005, gamma=0.99, epsilon=epsilon, epsilon_decay=0.999, device=device) 
+    team_b_agent = DQNAgent(state_dim, action_dim, lr=0.0005, gamma=0.99, epsilon=epsilon, epsilon_decay=0.999, device=device) 
 
     # Load latest models for play mode or continue mode
     if args.mode in ["continue", "play"]:
