@@ -95,10 +95,10 @@ class DQNAgent:
         batch, indices, weights = self.memory.sample(self.batch_size)
         states, actions, rewards, next_states, dones = zip(*batch)
 
-        states = torch.FloatTensor(states).to(self.device)
+        states = torch.FloatTensor(np.array(states)).to(self.device)
         actions = torch.LongTensor(actions).to(self.device)
         rewards = torch.FloatTensor(rewards).to(self.device)
-        next_states = torch.FloatTensor(next_states).to(self.device)
+        next_states = torch.FloatTensor(np.array(next_states)).to(self.device)
         dones = torch.FloatTensor(dones).to(self.device)
         weights = torch.FloatTensor(weights).to(self.device)
 
@@ -121,10 +121,16 @@ class DQNAgent:
         self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
 
     def save(self, path):
-        torch.save(self.model.state_dict(), path)
-        logging.info(f"Saved model to {path}")
+        checkpoint = {
+            'model_state_dict': self.model.state_dict(),
+            'epsilon': self.epsilon
+        }
+        torch.save(checkpoint, path)
+        logging.info(f"Saved model and epsilon to {path}")
 
     def load(self, path):
-        logging.info(f"Loading model from {path} to device {self.device}")
-        self.model.load_state_dict(torch.load(path, map_location=self.device))
+        logging.info(f"Loading model and epsilon from {path} to device {self.device}")
+        checkpoint = torch.load(path, map_location=self.device)
+        self.model.load_state_dict(checkpoint['model_state_dict'])
         self.target_model.load_state_dict(self.model.state_dict())
+        self.epsilon = checkpoint.get('epsilon', self.epsilon)  # Load epsilon, fallback to current
