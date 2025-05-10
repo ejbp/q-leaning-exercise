@@ -35,7 +35,7 @@ def find_latest_checkpoint(team):
 async def main():
     args = parse_args()
     setup_logging()
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "mps")
     logging.info(f"Starting in {args.mode} mode with render={args.render}, num_players={args.num_players}, human_mode={args.human_mode}, device={device}")
 
     # Create model/ directory if it doesn't exist
