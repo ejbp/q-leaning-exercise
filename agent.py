@@ -8,18 +8,24 @@ import heapq
 import logging
 
 torch._dynamo.config.suppress_errors = True
-
+    
 class DQN(nn.Module):
     def __init__(self, state_dim, action_dim):
         super(DQN, self).__init__()
-        self.fc1 = nn.Linear(state_dim, 256)
-        self.fc2 = nn.Linear(256, 256)
-        self.fc3 = nn.Linear(256, action_dim)
+        self.feature = nn.Sequential(
+            nn.Linear(state_dim, 256),
+            nn.ReLU(),
+            nn.Linear(256, 256),
+            nn.ReLU()
+        )
+        self.value = nn.Linear(256, 1)
+        self.advantage = nn.Linear(256, action_dim)
 
     def forward(self, x):
-        x = torch.relu(self.fc1(x))
-        x = torch.relu(self.fc2(x))
-        return self.fc3(x)
+        x = self.feature(x)
+        value = self.value(x)
+        advantage = self.advantage(x)
+        return value + (advantage - advantage.mean(dim=1, keepdim=True))
 
 class PrioritizedReplayBuffer:
     def __init__(self, capacity, alpha=0.6):

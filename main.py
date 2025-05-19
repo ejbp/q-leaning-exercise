@@ -71,7 +71,7 @@ async def main():
                 return
 
     # Training or play loop
-    num_episodes = 2000 if args.mode in ["train", "continue"] else 1
+    num_episodes = 50000 if args.mode in ["train", "continue"] else 1
     save_interval = 10
     for episode in range(num_episodes):
         start_time = time.time()
